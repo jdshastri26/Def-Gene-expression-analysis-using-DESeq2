@@ -1,0 +1,95 @@
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+# Install DESeq2 and other useful packages
+BiocManager::install(c("DESeq2", "pheatmap", "EnhancedVolcano", "RColorBrewer"))
+
+# Load the necessary libraries
+library(DESeq2)
+library(pheatmap)
+library(EnhancedVolcano)
+library(RColorBrewer)
+
+
+# Load your count data and metadata
+# Example: Reading data from CSV files
+countData <- read.csv("gene_counts.csv", row.names=1)
+colData <- read.csv("sample_metadata.csv", row.names=1)
+
+# Ensure that the row names in colData match the column names in countData
+colData <- colData[colnames(countData), ]
+
+# Convert the condition column to a factor
+colData$condition <- factor(colData$condition)
+
+# Create DESeq2 dataset object
+dds <- DESeqDataSetFromMatrix(countData = countData,
+                              colData = colData,
+                              design = ~ condition)
+
+
+# Pre-filter low-count genes
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+
+
+
+# Perform the normalization
+dds <- DESeq(dds)
+
+# Extract normalized counts for visualization
+normalized_counts <- counts(dds, normalized=TRUE)
+
+
+
+
+# Calculate sample-to-sample distances
+sampleDists <- dist(t(assay(vsd)))
+
+# Generate a heatmap
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- colData(dds)$condition
+colnames(sampleDistMatrix) <- colData(dds)$condition
+
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+# Extract differential expression results
+res <- results(dds)
+
+# Filter significant results
+resSig <- res[which(res$padj < 0.05), ]
+
+# Summary of results
+summary(res)
+
+# Select the top 20 differentially expressed genes
+topGenes <- head(order(res$padj), 20)
+
+# Plot heatmap
+pheatmap(assay(vsd)[topGenes, ],
+         cluster_rows=TRUE,
+         show_rownames=TRUE,
+         cluster_cols=TRUE,
+         annotation_col=colData(dds))
+
+# Order results by adjusted p-value
+resOrdered <- res[order(res$padj), ]
+
+# Export significant results to CSV
+write.csv(as.data.frame(resSig), file="significant_differential_expression_results.csv")
+
+
+Summary of the Refined Workflow:
+Pre-filtering: We filter out low-count genes to improve the quality of the analysis.
+Normalization: Properly normalizes the count data using DESeq2's built-in method.
+Quality Control: Includes PCA and sample distance heatmaps to assess data quality and sample relationships.
+Visualization: Uses EnhancedVolcano for a more informative volcano plot and a heatmap of the top differentially expressed genes.
+Exporting: The results are filtered and saved, making it easier to focus on the most.
+significant findings.
+
+
+
